@@ -298,8 +298,42 @@ def clean_dataset(input_path: Path = DEFAULT_INPUT, output_path: Path = DEFAULT_
     resumen.to_csv("inversion_por_disciplina_pais.csv", index=False)
 
     # ---------------------------------------------------------------------
-    # Guardar limpio -------------------------------------------------------
-    df.to_csv(output_path, index=False)
+    # Guardar limpio en archivos mensuales --------------------------------
+    df["Created time"] = pd.to_datetime(df["Created time"], errors='coerce')
+
+    month_map_es = {
+        1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+        7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre"
+    }
+
+    if 'Created time' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Created time']):
+        df['Month'] = df['Created time'].dt.month
+        output_dir = output_path.parent
+        base_name = output_path.stem
+
+        # Eliminar archivo de salida consolidado si existe, para evitar confusiones
+        if output_path.exists():
+            print(f"Eliminando archivo de salida consolidado anterior: {output_path}")
+            output_path.unlink()
+
+        # Guardar cada mes en un archivo separado
+        print("\nGuardando archivos de salida por mes...")
+        for month_num, group in df.groupby('Month'):
+            month_name = month_map_es.get(month_num, f"mes_{month_num}")
+            
+            safe_month_name = "".join(c for c in month_name if c.isalnum() or c in ('-', '_')).rstrip()
+            output_filename = output_dir / f"{base_name}-{safe_month_name}.csv"
+            
+            group_to_save = group.drop(columns=['Month'])
+            group_to_save.to_csv(output_filename, index=False)
+            print(f"-> Archivo para '{month_name}' guardado en: {output_filename}")
+        
+        df.drop(columns=['Month'], inplace=True)
+    else:
+        # Comportamiento anterior si no se puede procesar la fecha
+        print(f"Advertencia: No se pudo procesar la columna 'Created time'. Guardando en un solo archivo: {output_path}")
+        df.to_csv(output_path, index=False)
+
     return df
 
 
@@ -339,8 +373,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Limpia y normaliza la base de oportunidades Radartes.")
     parser.add_argument("--input", type=str, default=str(DEFAULT_INPUT), help="Ruta al CSV de entrada.")
-    parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT), help="Ruta al CSV limpio de salida.")
+    parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT), help="Ruta base para los CSVs limpios de salida por mes (ej: 'clean_radartes.csv').")
     args = parser.parse_args()
 
     df_clean = clean_dataset(Path(args.input), Path(args.output))
-    print(f"Archivo limpio guardado en {args.output}. Total de filas: {len(df_clean)}") 
+    print(f"\nProceso de limpieza completado. Total de filas procesadas: {len(df_clean)}") 
